@@ -1,0 +1,35 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets and environment
+.env
+.env.*
+!.env.example
+
+# Logs and generated files
+*.log
+logs/
+*.tmp
+build/
+dist/
+*.egg-info/
+
+# Private participant data
+data/raw/
+data/private/
+data/participants/
