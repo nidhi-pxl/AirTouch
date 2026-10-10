@@ -8,10 +8,8 @@ Can a camera-based, fine-grained finger-gesture interface provide an effective a
 
 ## Proposed gesture families
 - Point → select
-- Pinch → click
-- Swipe → next/back
+- Pinch → zoom
 - Open hand → scroll
-- Fist → team-defined action
 
 Confirm exact mappings before implementation. Swipe directions may be separate event labels within one gesture family.
 
@@ -40,12 +38,11 @@ The app entry point is a scaffold until implemented. Intended command: `python -
 
 ## Roles
 - **Nidhi:** hand tracking, integration, `src/main.py`, repository setup and root config.
-- **Person 1:** action mapping and feedback.
-- **Person 2:** gesture recognition, pinch/swipe detection and calibration.
-- **Person 3:** HCI study protocol and research documentation.
+- **Person 1:** action mapping, gestures.
+- **Person 2:** gesture recognition, detection.
+- **Person 3:** HCI study protocol and research documentation/ questionnaire.
 - **Person 4:** event logging, analysis and evaluation outputs.
 
-Confirm final numbered role assignments in the team chat.
 
 ## Module contracts
 - Tracker: frame in → structured landmarks/metadata or no hand.
