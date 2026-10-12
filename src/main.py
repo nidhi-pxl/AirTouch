@@ -9,11 +9,15 @@ when the gesture and interaction modules are ready.
 import cv2
 
 from src.vision.hand_tracker import HandTracker
+from src.gestures.swipe_detector import SwipeDetector
+from src.interaction.action_mapper import ActionMapper
 
 
 def main():
     tracker = HandTracker(max_num_hands=1)
     camera = cv2.VideoCapture(0)
+    scroll_detector = SwipeDetector(movement_threshold=50)
+    action_mapper = ActionMapper(dry_run=False)
 
     if not camera.isOpened():
         print("Error: Could not open webcam.")
@@ -43,6 +47,18 @@ def main():
             if hands:
                 hand = hands[0]
                 finger_states = tracker.get_finger_states(hand)
+
+                #scroll_event = scroll_detector.update(hand, finger_states)
+                # print(
+                #     f"Y={hand['lm_list'][8][1]}, "
+                #     f"states={finger_states}, "
+                #     f"event={scroll_event}, "
+                #     f"anchor={scroll_detector.anchor_y}, "
+                #     f"armed={scroll_detector.armed}"
+                # )
+
+                scroll_event = scroll_detector.update(hand, finger_states)
+                action_mapper.handle_event(scroll_event)
 
                 cx, cy = hand["center"]
 
