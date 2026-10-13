@@ -10,6 +10,7 @@ import cv2
 
 from src.vision.hand_tracker import HandTracker
 from src.gestures.swipe_detector import SwipeDetector
+from src.gestures.pinch_detector import PinchDetector
 from src.interaction.action_mapper import ActionMapper
 
 
@@ -17,7 +18,8 @@ def main():
     tracker = HandTracker(max_num_hands=1)
     camera = cv2.VideoCapture(0)
     scroll_detector = SwipeDetector(movement_threshold=50)
-    action_mapper = ActionMapper(dry_run=False)
+    pinch_detector = PinchDetector()
+    action_mapper = ActionMapper(dry_run=True)
 
     if not camera.isOpened():
         print("Error: Could not open webcam.")
@@ -60,6 +62,9 @@ def main():
                 scroll_event = scroll_detector.update(hand, finger_states)
                 action_mapper.handle_event(scroll_event)
 
+                zoom_event = pinch_detector.update(hand)
+                action_mapper.handle_event(zoom_event)
+
                 cx, cy = hand["center"]
 
                 cv2.putText(
@@ -92,6 +97,8 @@ def main():
                     2,
                 )
             else:
+                pinch_detector.update(None)
+
                 cv2.putText(
                     frame,
                     "No hand detected",
