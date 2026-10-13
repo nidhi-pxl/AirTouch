@@ -19,7 +19,7 @@ def main():
     camera = cv2.VideoCapture(0)
     scroll_detector = SwipeDetector(movement_threshold=50)
     pinch_detector = PinchDetector()
-    action_mapper = ActionMapper(dry_run=True)
+    action_mapper = ActionMapper(dry_run=False)
 
     if not camera.isOpened():
         print("Error: Could not open webcam.")
@@ -62,7 +62,7 @@ def main():
                 scroll_event = scroll_detector.update(hand, finger_states)
                 action_mapper.handle_event(scroll_event)
 
-                zoom_event = pinch_detector.update(hand)
+                zoom_event = pinch_detector.update(hand, finger_states)
                 action_mapper.handle_event(zoom_event)
 
                 cx, cy = hand["center"]
@@ -97,7 +97,7 @@ def main():
                     2,
                 )
             else:
-                pinch_detector.update(None)
+                pinch_detector.update(None, None)
 
                 cv2.putText(
                     frame,
