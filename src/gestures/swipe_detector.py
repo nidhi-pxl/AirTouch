@@ -7,8 +7,8 @@ class SwipeDetector:
 
     def __init__(
         self,
-        movement_threshold: int = 50,
-        rearm_threshold: int = 20,
+        movement_threshold: int = 30,
+        rearm_threshold: int = 10,
         max_invalid_frames: int = 3,
     ):
         self.movement_threshold = movement_threshold
@@ -29,24 +29,23 @@ class SwipeDetector:
         """Return SCROLL_UP, SCROLL_DOWN, or None."""
 
         # Require the index finger to be extended.
-        pointing = (
+
+        all_fingers_open = (
             len(finger_states) == 5
-            and finger_states[1:] == [1, 0, 0, 0]
+            and finger_states == [1, 1, 1, 1, 1]
         )
+        center = hand_info.get("center")
 
-        landmarks = hand_info.get("lm_list", [])
-
-        if not pointing or len(landmarks) < 21:
+        if not all_fingers_open or center is None or len(center) < 2:
             self.invalid_frames += 1
 
-            # Tolerate brief recognition failures during fast movement.
             if self.invalid_frames >= self.max_invalid_frames:
                 self.reset()
 
             return None
 
         self.invalid_frames = 0
-        current_y = landmarks[8][1]
+        current_y = center[1]
 
         # First valid frame establishes the reference.
         if self.anchor_y is None:
@@ -71,6 +70,6 @@ class SwipeDetector:
         self.armed = False
 
         if displacement < 0:
-            return "SCROLL_UP"
+            return "SCROLL_DOWN"
 
-        return "SCROLL_DOWN"
+        return "SCROLL_UP"
