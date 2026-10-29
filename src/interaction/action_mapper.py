@@ -17,6 +17,7 @@ class ActionMapper:
             "ZOOM_IN": lambda: pyautogui.hotkey("ctrl", "+"),
             "ZOOM_OUT": lambda: pyautogui.hotkey("ctrl", "-"),
             "RIGHT_CLICK": lambda: pyautogui.rightClick(),
+            "UNDO": lambda: pyautogui.hotkey("ctrl", "z"),
         }
 
         if event is None:
