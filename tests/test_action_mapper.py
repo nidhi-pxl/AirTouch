@@ -52,3 +52,20 @@ def test_dry_run_does_not_right_click():
     with patch("src.interaction.action_mapper.pyautogui.rightClick") as right_click:
         mapper.handle_event("RIGHT_CLICK")
         right_click.assert_not_called()
+
+
+
+def test_undo_calls_ctrl_z():
+    mapper = ActionMapper(dry_run=False)
+
+    with patch("src.interaction.action_mapper.pyautogui.hotkey") as hotkey:
+        mapper.handle_event("UNDO")
+        hotkey.assert_called_once_with("ctrl", "z")
+
+
+def test_dry_run_does_not_undo():
+    mapper = ActionMapper(dry_run=True)
+
+    with patch("src.interaction.action_mapper.pyautogui.hotkey") as hotkey:
+        mapper.handle_event("UNDO")
+        hotkey.assert_not_called()
