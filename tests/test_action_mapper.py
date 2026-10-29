@@ -35,3 +35,20 @@ def test_none_event_does_nothing():
     with patch("src.interaction.action_mapper.pyautogui.press") as press:
         mapper.handle_event(None)
         press.assert_not_called()
+
+
+
+def test_right_click_calls_right_click():
+    mapper = ActionMapper(dry_run=False)
+
+    with patch("src.interaction.action_mapper.pyautogui.rightClick") as right_click:
+        mapper.handle_event("RIGHT_CLICK")
+        right_click.assert_called_once_with()
+
+
+def test_dry_run_does_not_right_click():
+    mapper = ActionMapper(dry_run=True)
+
+    with patch("src.interaction.action_mapper.pyautogui.rightClick") as right_click:
+        mapper.handle_event("RIGHT_CLICK")
+        right_click.assert_not_called()

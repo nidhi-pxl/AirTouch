@@ -16,6 +16,7 @@ class ActionMapper:
             "SCROLL_DOWN": lambda: pyautogui.press("pagedown"),
             "ZOOM_IN": lambda: pyautogui.hotkey("ctrl", "+"),
             "ZOOM_OUT": lambda: pyautogui.hotkey("ctrl", "-"),
+            "RIGHT_CLICK": lambda: pyautogui.rightClick(),
         }
 
         if event is None:
