@@ -12,6 +12,7 @@ from src.vision.hand_tracker import HandTracker
 from src.gestures.swipe_detector import SwipeDetector
 from src.gestures.pinch_detector import PinchDetector
 from src.interaction.action_mapper import ActionMapper
+from src.gestures.pinky_detector import PinkyDetector
 
 
 def main():
@@ -19,6 +20,7 @@ def main():
     camera = cv2.VideoCapture(0)
     scroll_detector = SwipeDetector(movement_threshold=50)
     pinch_detector = PinchDetector()
+    pinky_detector = PinkyDetector()
     action_mapper = ActionMapper(dry_run=False)
 
     if not camera.isOpened():
@@ -64,6 +66,8 @@ def main():
 
                 zoom_event = pinch_detector.update(hand, finger_states)
                 action_mapper.handle_event(zoom_event)
+                right_click_event = pinky_detector.update(hand, finger_states)
+                action_mapper.handle_event(right_click_event)
 
                 cx, cy = hand["center"]
 
@@ -98,6 +102,7 @@ def main():
                 )
             else:
                 pinch_detector.update(None, None)
+                pinky_detector.update(None, None)
 
                 cv2.putText(
                     frame,
