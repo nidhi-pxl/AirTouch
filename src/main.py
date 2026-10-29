@@ -1,5 +1,5 @@
 
-"""AirTouch: stable index-finger mouse control."""
+"""AirTouch: index-finger mouse control."""
 
 import cv2
 import pyautogui
@@ -15,9 +15,10 @@ from src.interaction.action_mapper import ActionMapper
 ACTIVATION_FRAMES = 3
 DEACTIVATION_FRAMES = 4
 
-# Cursor stability settings
+# Cursor settings
 FILTER_FRAMES = 5
-DEAD_ZONE = 6
+DEAD_ZONE = 5
+CURSOR_SENSITIVITY = 0.75
 
 pyautogui.FAILSAFE = True
 
@@ -35,27 +36,11 @@ def detect_mouse_gesture(hand, finger_states):
     )
 
 
-def get_cursor_position(
-    hand,
-    frame_width,
-    frame_height,
-    screen_width,
-    screen_height,
-):
-    """Convert the index fingertip position to screen coordinates."""
+def get_index_tip(hand):
+    """Return the index fingertip coordinates in camera pixels."""
     try:
-        index_tip = hand["lm_list"][8]
-        camera_x = index_tip[0]
-        camera_y = index_tip[1]
-
-        screen_x = int(camera_x * screen_width / frame_width)
-        screen_y = int(camera_y * screen_height / frame_height)
-
-        screen_x = max(0, min(screen_width - 1, screen_x))
-        screen_y = max(0, min(screen_height - 1, screen_y))
-
-        return screen_x, screen_y
-
+        landmarks = hand["lm_list"]
+        return landmarks[8][0], landmarks[8][1]
     except (IndexError, KeyError, TypeError):
         return None
 
@@ -64,7 +49,7 @@ def main():
     tracker = HandTracker(max_num_hands=1)
     camera = cv2.VideoCapture(0)
 
-    # Keep existing swipe handling unchanged.
+    # Preserve existing swipe integration.
     scroll_detector = SwipeDetector(movement_threshold=50)
     action_mapper = ActionMapper(dry_run=True)
 
@@ -74,9 +59,15 @@ def main():
     positive_frames = 0
     negative_frames = 0
 
-    # Median filtering removes sudden fingertip-coordinate jumps.
+    # Filter fingertip noise.
     x_history = deque(maxlen=FILTER_FRAMES)
     y_history = deque(maxlen=FILTER_FRAMES)
+
+    # Relative movement anchors.
+    hand_anchor_x = None
+    hand_anchor_y = None
+    screen_anchor_x = None
+    screen_anchor_y = None
 
     last_cursor_x = None
     last_cursor_y = None
@@ -108,7 +99,7 @@ def main():
                 hand = hands[0]
                 finger_states = tracker.get_finger_states(hand)
 
-                # Preserve the existing swipe detector integration.
+                # Preserve existing swipe handling.
                 scroll_event = scroll_detector.update(
                     hand, finger_states
                 )
@@ -125,70 +116,111 @@ def main():
                     negative_frames += 1
                     positive_frames = 0
 
-                if positive_frames >= ACTIVATION_FRAMES:
-                    if not mouse_active:
-                        # Start fresh when mouse mode activates.
-                        x_history.clear()
-                        y_history.clear()
-                        last_cursor_x = None
-                        last_cursor_y = None
-
+                # Activate mouse mode.
+                if (
+                    positive_frames >= ACTIVATION_FRAMES
+                    and not mouse_active
+                ):
                     mouse_active = True
 
-                if negative_frames >= DEACTIVATION_FRAMES:
+                    # Anchor the hand to the cursor's CURRENT position.
+                    # This prevents a jump when mouse mode is reactivated.
+                    fingertip = get_index_tip(hand)
+
+                    if fingertip is not None:
+                        hand_anchor_x, hand_anchor_y = fingertip
+                        screen_anchor_x, screen_anchor_y = (
+                            pyautogui.position()
+                        )
+
+                        x_history.clear()
+                        y_history.clear()
+
+                        last_cursor_x = screen_anchor_x
+                        last_cursor_y = screen_anchor_y
+
+                # Deactivate mouse mode without moving the cursor.
+                if (
+                    negative_frames >= DEACTIVATION_FRAMES
+                    and mouse_active
+                ):
                     mouse_active = False
+
+                    # Clear anchors so the next activation starts
+                    # from the cursor's new, actual screen position.
+                    hand_anchor_x = None
+                    hand_anchor_y = None
+                    screen_anchor_x = None
+                    screen_anchor_y = None
+
                     x_history.clear()
                     y_history.clear()
+
                     last_cursor_x = None
                     last_cursor_y = None
 
                 if mouse_active:
-                    position = get_cursor_position(
-                        hand,
-                        frame_width,
-                        frame_height,
-                        screen_width,
-                        screen_height,
-                    )
+                    fingertip = get_index_tip(hand)
 
-                    if position is not None:
-                        raw_x, raw_y = position
+                    if fingertip is not None:
+                        raw_x, raw_y = fingertip
 
                         x_history.append(raw_x)
                         y_history.append(raw_y)
 
-                        # Wait for enough samples to stabilize tracking.
                         if len(x_history) == FILTER_FRAMES:
-                            target_x = int(median(x_history))
-                            target_y = int(median(y_history))
+                            filtered_x = median(x_history)
+                            filtered_y = median(y_history)
+
+                            # Calculate movement relative to the
+                            # fingertip position at activation.
+                            delta_x = (
+                                filtered_x - hand_anchor_x
+                            )
+                            delta_y = (
+                                filtered_y - hand_anchor_y
+                            )
+
+                            target_x = int(
+                                screen_anchor_x
+                                + delta_x
+                                * screen_width
+                                / frame_width
+                                * CURSOR_SENSITIVITY
+                            )
+                            target_y = int(
+                                screen_anchor_y
+                                + delta_y
+                                * screen_height
+                                / frame_height
+                                * CURSOR_SENSITIVITY
+                            )
+
+                            target_x = max(
+                                0, min(screen_width - 1, target_x)
+                            )
+                            target_y = max(
+                                0, min(screen_height - 1, target_y)
+                            )
+
+                            # Ignore tiny target changes to reduce jitter.
+                            dx = target_x - last_cursor_x
+                            dy = target_y - last_cursor_y
 
                             if (
-                                last_cursor_x is None
-                                or last_cursor_y is None
+                                abs(dx) > DEAD_ZONE
+                                or abs(dy) > DEAD_ZONE
                             ):
-                                last_cursor_x = target_x
-                                last_cursor_y = target_y
-
                                 pyautogui.moveTo(
-                                    target_x, target_y, duration=0
+                                    target_x,
+                                    target_y,
+                                    duration=0,
                                 )
 
-                            else:
-                                dx = target_x - last_cursor_x
-                                dy = target_y - last_cursor_y
-
-                                # Ignore tiny coordinate changes.
-                                if (
-                                    abs(dx) > DEAD_ZONE
-                                    or abs(dy) > DEAD_ZONE
-                                ):
-                                    # Move directly to the filtered target.
-                                    # No trailing interpolation or momentum.
-                                    pyautogui.moveTo(
-                                        target_x, target_y, duration=0
-                                    )
-                                    last_cursor_x = target_x
-                                    last_cursor_y = target_y
+                                last_cursor_x, last_cursor_y = (
+                                    target_x,
+                                    target_y,
+                                )
 
                 status = (
                     "MOUSE ACTIVE"
@@ -206,7 +238,7 @@ def main():
                     f"Finger states: {finger_states}",
                     (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
+                    0.55,
                     (0, 255, 0),
                     2,
                 )
@@ -227,8 +259,15 @@ def main():
 
                 if negative_frames >= DEACTIVATION_FRAMES:
                     mouse_active = False
+
+                    hand_anchor_x = None
+                    hand_anchor_y = None
+                    screen_anchor_x = None
+                    screen_anchor_y = None
+
                     x_history.clear()
                     y_history.clear()
+
                     last_cursor_x = None
                     last_cursor_y = None
 
@@ -237,7 +276,7 @@ def main():
                     "No hand detected",
                     (10, 35),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
+                    0.65,
                     (0, 0, 255),
                     2,
                 )
