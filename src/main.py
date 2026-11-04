@@ -1,59 +1,84 @@
 
-"""AirTouch: index-finger mouse control and left-click gestures."""
+"""AirTouch: mouse control and integrated hand gestures."""
 
 import cv2
 import pyautogui
 import math
 import time
+
 from collections import deque
 from statistics import median
 
 from src.vision.hand_tracker import HandTracker
+
 from src.gestures.swipe_detector import SwipeDetector
+from src.gestures.pinch_detector import PinchDetector
+from src.gestures.pinky_detector import PinkyDetector
+from src.gestures.thumbs_down_detector import ThumbsDownDetector
+
 from src.interaction.action_mapper import ActionMapper
 
 
-# Mouse gesture settings
+# --------------------------------------------------
+# MOUSE SETTINGS
+# --------------------------------------------------
+
 ACTIVATION_FRAMES = 3
 DEACTIVATION_FRAMES = 4
 
-# Cursor settings
 FILTER_FRAMES = 5
 DEAD_ZONE = 5
 CURSOR_SENSITIVITY = 0.75
 
-# Left-click settings
+
+# --------------------------------------------------
+# LEFT-CLICK SETTINGS
+# --------------------------------------------------
+
 LEFT_CLICK_BENT_ANGLE = 145
 LEFT_CLICK_CONFIRM_FRAMES = 3
 LEFT_CLICK_COOLDOWN = 0.6
 
+
 pyautogui.FAILSAFE = True
 
 
+# --------------------------------------------------
+# MOUSE GESTURE DETECTION
+# --------------------------------------------------
+
 def detect_mouse_gesture(hand, finger_states):
-    """Index open; middle, ring, and pinky closed."""
+    """
+    Mouse gesture:
+    Thumb closed, index open, middle/ring/pinky closed.
+
+    Exact pattern: [0, 1, 0, 0, 0]
+    """
+
     if hand is None or len(finger_states) != 5:
         return False
 
-    return (
-        finger_states[1] == 1
-        and finger_states[2] == 0
-        and finger_states[3] == 0
-        and finger_states[4] == 0
-    )
+    return finger_states == [0, 1, 0, 0, 0]
 
 
 def get_index_tip(hand):
     """Return index fingertip coordinates in camera pixels."""
+
     try:
         landmarks = hand["lm_list"]
         return landmarks[8][0], landmarks[8][1]
+
     except (IndexError, KeyError, TypeError):
         return None
 
 
+# --------------------------------------------------
+# LEFT-CLICK GESTURE DETECTION
+# --------------------------------------------------
+
 def calculate_angle(a, b, c):
     """Calculate angle ABC in degrees."""
+
     ba = (a[0] - b[0], a[1] - b[1])
     bc = (c[0] - b[0], c[1] - b[1])
 
@@ -64,6 +89,7 @@ def calculate_angle(a, b, c):
         return None
 
     dot_product = ba[0] * bc[0] + ba[1] * bc[1]
+
     cosine = dot_product / (magnitude_ba * magnitude_bc)
     cosine = max(-1.0, min(1.0, cosine))
 
@@ -72,16 +98,22 @@ def calculate_angle(a, b, c):
 
 def get_index_bend_angle(hand):
     """
-    Estimate index bend angle:
-    5 = index MCP, 6 = index PIP, 8 = index fingertip.
+    Estimate index finger bend angle.
+
+    5 = index MCP
+    6 = index PIP
+    8 = index fingertip
     """
+
     try:
         landmarks = hand["lm_list"]
+
         return calculate_angle(
             landmarks[5],
             landmarks[6],
             landmarks[8],
         )
+
     except (IndexError, KeyError, TypeError):
         return None
 
@@ -89,8 +121,9 @@ def get_index_bend_angle(hand):
 def detect_left_click_gesture(hand, finger_states):
     """
     Left-click pose:
-    thumb open, index bent, middle/ring/pinky open.
+    Thumb open, index bent, middle/ring/pinky open.
     """
+
     if hand is None or len(finger_states) != 5:
         return False, None
 
@@ -104,64 +137,98 @@ def detect_left_click_gesture(hand, finger_states):
     angle = get_index_bend_angle(hand)
 
     index_is_bent = (
-        angle is not None
+        finger_states[1] == 0
+        and angle is not None
         and angle < LEFT_CLICK_BENT_ANGLE
     )
 
     return required_fingers_open and index_is_bent, angle
 
 
+def is_open_palm(finger_states):
+    """Check whether all five fingers are open."""
+
+    return (
+        finger_states is not None
+        and len(finger_states) == 5
+        and finger_states == [1, 1, 1, 1, 1]
+    )
+
+
+# --------------------------------------------------
+# CURSOR RESET
+# --------------------------------------------------
+
 def reset_cursor_anchors():
     """Return empty cursor-anchor values."""
+
     return None, None, None, None, None, None
 
 
+# --------------------------------------------------
+# MAIN APPLICATION
+# --------------------------------------------------
+
 def main():
+
     tracker = HandTracker(max_num_hands=1)
     camera = cv2.VideoCapture(0)
 
-    # Existing swipe handling: intentionally preserved.
+    # Friend's gesture detectors.
     scroll_detector = SwipeDetector(movement_threshold=50)
-    action_mapper = ActionMapper(dry_run=True)
+    pinch_detector = PinchDetector()
+    pinky_detector = PinkyDetector()
+    thumbs_down_detector = ThumbsDownDetector()
+
+    action_mapper = ActionMapper(dry_run=False)
 
     screen_width, screen_height = pyautogui.size()
 
+    # Mouse state.
     mouse_active = False
     positive_frames = 0
     negative_frames = 0
 
+    # Left-click state.
     left_click_frames = 0
+    left_click_armed = False
     left_click_detected = False
-    left_click_was_held = False
     last_left_click_time = 0.0
 
-    # Smooth fingertip movement.
+    # Cursor smoothing.
     x_history = deque(maxlen=FILTER_FRAMES)
     y_history = deque(maxlen=FILTER_FRAMES)
 
-    # Relative movement anchors.
+    # Relative cursor anchors.
     hand_anchor_x = None
     hand_anchor_y = None
     screen_anchor_x = None
     screen_anchor_y = None
+
     last_cursor_x = None
     last_cursor_y = None
 
+    # Camera check.
     if not camera.isOpened():
         print("Error: Could not open webcam.")
         tracker.hands.close()
         return
 
+    print("-----------------------------------")
     print("AirTouch started. Press Q to quit.")
-    print("Mouse: raise index; close middle, ring, and pinky.")
-    print(
-        "Left-click: bend index; keep thumb, middle, "
-        "ring, and pinky open."
-    )
-    print("Left-clicks are ENABLED.")
+    print("-----------------------------------")
+    print("Mouse: Thumb closed, index open, other fingers closed.")
+    print("Left-click: Open palm, then bend index finger.")
+    print("Right-click: Friend's detector.")
+    print("Zoom: Friend's detector.")
+    print("Undo: Friend's detector.")
+    print("Scroll: Friend's detector.")
+    print("-----------------------------------")
 
     try:
+
         while True:
+
             success, frame = camera.read()
 
             if not success:
@@ -169,60 +236,113 @@ def main():
                 break
 
             frame = cv2.flip(frame, 1)
+
             frame_height, frame_width = frame.shape[:2]
 
+            # Process hand tracking.
             tracker.process_frame(frame)
+
             hands = tracker.get_hands_info(frame)
+
             tracker.draw_landmarks(frame)
 
             if hands:
+
                 hand = hands[0]
+
                 finger_states = tracker.get_finger_states(hand)
 
-                # Preserve existing swipe pipeline.
+                # ----------------------------------
+                # FRIEND'S GESTURE DETECTORS
+                # DO NOT MODIFY THEIR IMPLEMENTATIONS
+                # ----------------------------------
+
                 scroll_event = scroll_detector.update(
-                    hand, finger_states
+                    hand,
+                    finger_states,
                 )
                 action_mapper.handle_event(scroll_event)
 
+                zoom_event = pinch_detector.update(hand, finger_states)                
+                action_mapper.handle_event(zoom_event)
+
+                right_click_event = pinky_detector.update(
+                    hand,
+                    finger_states,
+                )
+                action_mapper.handle_event(right_click_event)
+
+                undo_event = thumbs_down_detector.update(
+                    hand,
+                    finger_states,
+                )
+                action_mapper.handle_event(undo_event)
+
+                # ----------------------------------
+                # YOUR MOUSE AND LEFT-CLICK DETECTORS
+                # ----------------------------------
+
                 mouse_gesture = detect_mouse_gesture(
-                    hand, finger_states
+                    hand,
+                    finger_states,
                 )
 
                 left_click_pose, index_angle = (
                     detect_left_click_gesture(
-                        hand, finger_states
+                        hand,
+                        finger_states,
                     )
                 )
 
-                # Require the pose to persist for several frames.
-                if left_click_pose:
+                open_palm = is_open_palm(finger_states)
+
+                # ----------------------------------
+                # LEFT-CLICK ARMING
+                # ----------------------------------
+
+                # An open palm is required before every click.
+                if open_palm:
+                    left_click_armed = True
+                    left_click_frames = 0
+
+                # Count consecutive valid click-pose frames.
+                if left_click_armed and left_click_pose:
                     left_click_frames += 1
                 else:
                     left_click_frames = 0
 
                 left_click_detected = (
-                    left_click_frames >= LEFT_CLICK_CONFIRM_FRAMES
+                    left_click_armed
+                    and left_click_frames >= LEFT_CLICK_CONFIRM_FRAMES
                 )
 
-                # Perform one actual left-click per gesture.
+                # Execute exactly one click.
                 now = time.monotonic()
 
                 if (
                     left_click_detected
-                    and not left_click_was_held
-                    and now - last_left_click_time
-                    >= LEFT_CLICK_COOLDOWN
+                    and now - last_left_click_time >= LEFT_CLICK_COOLDOWN
                 ):
+
                     pyautogui.click(button="left")
+
                     last_left_click_time = now
-                    print("Left-click executed!")
 
-                left_click_was_held = left_click_detected
+                    # Disarm until another open palm is detected.
+                    left_click_armed = False
+                    left_click_frames = 0
 
-                # Keep the cursor still while the click pose is held.
+                    print("Executed: LEFT_CLICK")
+
+                # ----------------------------------
+                # MOUSE ACTIVATION / DEACTIVATION
+                # ----------------------------------
+
+                # Pause mouse movement during the click pose.
                 if left_click_pose:
+
                     mouse_active = False
+
                     positive_frames = 0
                     negative_frames = 0
 
@@ -239,23 +359,27 @@ def main():
                     y_history.clear()
 
                 else:
+
                     if mouse_gesture:
                         positive_frames += 1
                         negative_frames = 0
+
                     else:
                         negative_frames += 1
                         positive_frames = 0
 
-                    # Activate mouse mode, anchoring to the current
-                    # cursor position so it won't jump.
+                    # Activate mouse mode.
                     if (
                         positive_frames >= ACTIVATION_FRAMES
                         and not mouse_active
                     ):
+
                         fingertip = get_index_tip(hand)
 
                         if fingertip is not None:
+
                             mouse_active = True
+
                             hand_anchor_x, hand_anchor_y = fingertip
 
                             (
@@ -269,11 +393,12 @@ def main():
                             last_cursor_x = screen_anchor_x
                             last_cursor_y = screen_anchor_y
 
-                    # Deactivate mouse mode after the pose is released.
+                    # Deactivate mouse mode.
                     if (
                         negative_frames >= DEACTIVATION_FRAMES
                         and mouse_active
                     ):
+
                         mouse_active = False
 
                         (
@@ -288,21 +413,33 @@ def main():
                         x_history.clear()
                         y_history.clear()
 
-                    # Relative cursor movement with median filtering.
+                    # ----------------------------------
+                    # RELATIVE CURSOR MOVEMENT
+                    # ----------------------------------
+
                     if mouse_active:
+
                         fingertip = get_index_tip(hand)
 
                         if fingertip is not None:
+
                             raw_x, raw_y = fingertip
+
                             x_history.append(raw_x)
                             y_history.append(raw_y)
 
                             if len(x_history) == FILTER_FRAMES:
+
                                 filtered_x = median(x_history)
                                 filtered_y = median(y_history)
 
-                                delta_x = filtered_x - hand_anchor_x
-                                delta_y = filtered_y - hand_anchor_y
+                                delta_x = (
+                                    filtered_x - hand_anchor_x
+                                )
+
+                                delta_y = (
+                                    filtered_y - hand_anchor_y
+                                )
 
                                 target_x = int(
                                     screen_anchor_x
@@ -324,6 +461,7 @@ def main():
                                     0,
                                     min(screen_width - 1, target_x),
                                 )
+
                                 target_y = max(
                                     0,
                                     min(screen_height - 1, target_y),
@@ -336,6 +474,7 @@ def main():
                                     abs(dx) > DEAD_ZONE
                                     or abs(dy) > DEAD_ZONE
                                 ):
+
                                     pyautogui.moveTo(
                                         target_x,
                                         target_y,
@@ -345,7 +484,10 @@ def main():
                                     last_cursor_x = target_x
                                     last_cursor_y = target_y
 
-                # Camera overlay: finger states.
+                # ----------------------------------
+                # CAMERA DISPLAY
+                # ----------------------------------
+
                 cv2.putText(
                     frame,
                     f"Finger states: {finger_states}",
@@ -356,7 +498,6 @@ def main():
                     2,
                 )
 
-                # Camera overlay: mouse status.
                 mouse_status = (
                     "MOUSE ACTIVE"
                     if mouse_active
@@ -379,7 +520,6 @@ def main():
                     2,
                 )
 
-                # Camera overlay: bend angle.
                 if index_angle is not None:
                     angle_text = (
                         f"Index bend angle: {index_angle:.1f}"
@@ -397,19 +537,24 @@ def main():
                     2,
                 )
 
-                # Camera overlay: left-click status.
                 if left_click_detected:
                     click_status = "LEFT CLICK EXECUTED"
                     click_color = (0, 255, 0)
-                elif left_click_pose:
+
+                elif left_click_armed and left_click_pose:
                     click_status = (
-                        f"Confirming left-click: "
+                        f"Confirming click: "
                         f"{left_click_frames}/"
                         f"{LEFT_CLICK_CONFIRM_FRAMES}"
                     )
                     click_color = (0, 165, 255)
+
+                elif left_click_armed:
+                    click_status = "CLICK ARMED - OPEN PALM DETECTED"
+                    click_color = (255, 255, 0)
+
                 else:
-                    click_status = "LEFT-CLICK POSE NOT DETECTED"
+                    click_status = "SHOW OPEN PALM TO ARM CLICK"
                     click_color = (0, 0, 255)
 
                 cv2.putText(
@@ -422,14 +567,38 @@ def main():
                     2,
                 )
 
+                cv2.putText(
+                    frame,
+                    f"Hand: {hand['type']} | "
+                    f"Confidence: {hand['score']:.2f}",
+                    (10, 170),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+
+            # ----------------------------------
+            # NO HAND DETECTED
+            # ----------------------------------
+
             else:
+
                 positive_frames = 0
                 negative_frames += 1
-                left_click_frames = 0
-                left_click_detected = False
-                left_click_was_held = False
 
+                left_click_frames = 0
+                left_click_armed = False
+                left_click_detected = False
+
+                # Reset friend's gesture detectors.
+                pinch_detector.reset()
+                pinky_detector.reset()
+                thumbs_down_detector.reset()
+
+                # Deactivate mouse.
                 if negative_frames >= DEACTIVATION_FRAMES:
+
                     mouse_active = False
 
                     (
@@ -466,7 +635,7 @@ def main():
 
                 cv2.putText(
                     frame,
-                    "LEFT-CLICK POSE NOT DETECTED",
+                    "SHOW OPEN PALM TO ARM CLICK",
                     (10, 135),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.55,
@@ -474,18 +643,25 @@ def main():
                     2,
                 )
 
-            cv2.imshow("AirTouch - Mouse Control", frame)
+            # Show camera feed.
+            cv2.imshow(
+                "AirTouch - Hand Tracking",
+                frame,
+            )
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
     except pyautogui.FailSafeException:
-        print("Mouse control stopped by the PyAutoGUI fail-safe.")
+
+        print("Mouse control stopped by PyAutoGUI fail-safe.")
 
     finally:
+
         camera.release()
         cv2.destroyAllWindows()
         tracker.hands.close()
+
         print("AirTouch stopped.")
 
 
