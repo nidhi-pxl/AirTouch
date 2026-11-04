@@ -56,11 +56,11 @@ def test_brief_release_does_not_rearm():
     assert "RIGHT_CLICK" not in results
 
 
-def test_thumb_out_does_not_click():
-    detector = PinkyDetector()
-    results = feed(detector, PINKY_UP_THUMB_OUT, 20)
+def test_thumb_out_also_clicks():
+    detector = PinkyDetector(hold_frames=5)
+    results = feed(detector, PINKY_UP_THUMB_OUT, 5)
 
-    assert "RIGHT_CLICK" not in results
+    assert results[4] == "RIGHT_CLICK"
 
 
 def test_fist_does_not_click():
