@@ -5,7 +5,7 @@ class PinkyDetector:
     """Fire RIGHT_CLICK once when only the pinky is lifted and held."""
 
     # [Thumb, Index, Middle, Ring, Pinky]; None means "don't care".
-    POSE_TEMPLATE = [0, 0, 0, 0, 1]
+    POSE_TEMPLATE = [None, 0, 0, 0, 1]
 
     def __init__(self, hold_frames: int = 5, release_frames: int = 3):
         self.hold_frames = hold_frames
