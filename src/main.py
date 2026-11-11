@@ -586,6 +586,7 @@ def main():
 
                 positive_frames = 0
                 negative_frames += 1
+                scroll_detector.reset()
 
                 left_click_frames = 0
                 left_click_armed = False
