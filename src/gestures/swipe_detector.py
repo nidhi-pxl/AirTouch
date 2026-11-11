@@ -1,13 +1,13 @@
 
-"""Detect vertical finger scrolling from index fingertip movement."""
+"""Detect vertical scrolling using finger configurations and hand movement."""
 
 
 class SwipeDetector:
-    """Detect upward and downward index finger movements."""
+    """Detect scroll gestures using hand position and finger states."""
 
     def __init__(
         self,
-        movement_threshold: int = 30,
+        movement_threshold: int = 50,
         rearm_threshold: int = 10,
         max_invalid_frames: int = 3,
     ):
@@ -28,15 +28,17 @@ class SwipeDetector:
     def update(self, hand_info: dict, finger_states: list[int]) -> str | None:
         """Return SCROLL_UP, SCROLL_DOWN, or None."""
 
-        # Require the index finger to be extended.
+        # Gesture 1: All five fingers open.
+        # Gesture 2: Thumb closed, remaining four fingers open.
 
-        all_fingers_open = (
-            len(finger_states) == 5
-            and finger_states == [1, 1, 1, 1, 1]
-        )
+        scroll_down_gesture = finger_states == [1, 1, 1, 1, 1]
+        scroll_up_gesture = finger_states == [0, 1, 1, 1, 1]
+
+        valid_gesture = scroll_down_gesture or scroll_up_gesture
+
         center = hand_info.get("center")
 
-        if not all_fingers_open or center is None or len(center) < 2:
+        if not valid_gesture or center is None or len(center) < 2:
             self.invalid_frames += 1
 
             if self.invalid_frames >= self.max_invalid_frames:
@@ -47,29 +49,33 @@ class SwipeDetector:
         self.invalid_frames = 0
         current_y = center[1]
 
-        # First valid frame establishes the reference.
+        # Establish the starting hand position.
         if self.anchor_y is None:
             self.anchor_y = current_y
             return None
 
         displacement = current_y - self.anchor_y
 
-        # After a scroll, wait until the finger returns near
-        # its starting position before allowing another event.
+        # Rearm only after returning close to the starting position.
         if not self.armed:
             if abs(displacement) <= self.rearm_threshold:
                 self.anchor_y = current_y
                 self.armed = True
             return None
 
-        # Ignore movements that are too small.
+        # Ignore small movements.
         if abs(displacement) < self.movement_threshold:
             return None
 
-        # Fire only once during this movement.
+        # Trigger only once per movement.
         self.armed = False
 
-        if displacement < 0:
+        # Negative Y displacement means hand moved UP.
+        if displacement < 0 and scroll_down_gesture:
             return "SCROLL_DOWN"
 
-        return "SCROLL_UP"
+        # Positive Y displacement means hand moved DOWN.
+        if displacement > 0 and scroll_up_gesture:
+            return "SCROLL_UP"
+
+        return None
