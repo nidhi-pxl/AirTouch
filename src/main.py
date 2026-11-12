@@ -12,7 +12,7 @@ from statistics import median
 from src.vision.hand_tracker import HandTracker
 
 from src.gestures.swipe_detector import SwipeDetector
-from src.gestures.pinch_detector import PinchDetector
+from src.gestures.zoom_detector import ZoomDetector
 from src.gestures.pinky_detector import PinkyDetector
 from src.gestures.thumbs_down_detector import ThumbsDownDetector
 
@@ -176,7 +176,7 @@ def main():
 
     # Friend's gesture detectors.
     scroll_detector = SwipeDetector(movement_threshold=50)
-    pinch_detector = PinchDetector()
+    zoom_detector = ZoomDetector()
     pinky_detector = PinkyDetector()
     thumbs_down_detector = ThumbsDownDetector()
 
@@ -220,7 +220,8 @@ def main():
     print("Mouse: Thumb closed, index open, other fingers closed.")
     print("Left-click: Open palm, then bend index finger.")
     print("Right-click: Friend's detector.")
-    print("Zoom: Friend's detector.")
+    print("Zoom in: thumb out, slide thumb right.")
+    print("Zoom out: index + middle out, slide left.")
     print("Undo: Friend's detector.")
     print("Scroll: Friend's detector.")
     print("-----------------------------------")
@@ -263,7 +264,7 @@ def main():
                 )
                 action_mapper.handle_event(scroll_event)
 
-                zoom_event = pinch_detector.update(hand, finger_states)                
+                zoom_event = zoom_detector.update(hand, finger_states)
                 action_mapper.handle_event(zoom_event)
 
                 right_click_event = pinky_detector.update(
@@ -593,7 +594,7 @@ def main():
                 left_click_detected = False
 
                 # Reset friend's gesture detectors.
-                pinch_detector.reset()
+                zoom_detector.reset()
                 pinky_detector.reset()
                 thumbs_down_detector.reset()
 
