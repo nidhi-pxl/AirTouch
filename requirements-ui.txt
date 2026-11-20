@@ -1,0 +1,17 @@
+# Existing AirTouch runtime dependencies
+opencv-python==4.10.0.84
+mediapipe==0.10.21
+numpy==1.26.4
+PyAutoGUI>=0.9.54
+
+# Desktop interface
+PySide6>=6.7,<7
+
+# Evaluation and plots
+pandas>=2.2,<3.0
+matplotlib>=3.8,<4.0
+scikit-learn>=1.5,<2.0
+
+# Tests and packaging
+pytest>=8.0,<9.0
+pyinstaller>=6.0
