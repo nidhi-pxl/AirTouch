@@ -1,66 +1,164 @@
 # AirTouch
-## Fine-Grained Finger Gesture Interaction Using Commodity Camera Sensing
 
-AirTouch is an HCI project exploring whether a standard laptop webcam can support usable fine-grained finger-gesture interaction for simple desktop tasks without specialized wearable hardware. **This repository is an initial scaffold; placeholders are not completed functionality.**
+### Fine-Grained Finger Gesture Interaction Using Commodity Camera Sensing
 
-## Research question
-Can a camera-based, fine-grained finger-gesture interface provide an effective and usable alternative to conventional mouse interaction for simple desktop tasks?
+AirTouch is a webcam-based desktop gesture-control application developed as part of a Human-Computer Interaction (HCI) project.
 
-## Proposed gesture families
-- Point → select
-- Pinch → zoom
-- Open hand → scroll
+It explores whether a standard laptop webcam can support fine-grained finger-gesture interaction for everyday desktop tasks without requiring specialized wearable hardware.
 
-Confirm exact mappings before implementation. Swipe directions may be separate event labels within one gesture family.
+Using **OpenCV**, **MediaPipe**, and **PyAutoGUI**, AirTouch tracks hand landmarks, recognizes gestures, and translates them into desktop actions such as cursor movement, clicking, scrolling, zooming, and undoing.
 
-## Pipeline
-Webcam/OpenCV → MediaPipe hand landmarks → gesture recognition and temporal detectors → action mapping and feedback → event logging → analysis.
+The application features a modern desktop interface built with **PySide6**, providing live camera preview and controls to start, pause, resume, and stop gesture interaction.
 
-## Setup
-Recommended: Python 3.11 or 3.12 because MediaPipe wheel support varies by Python version/platform.
+## Features
 
-Windows PowerShell:
+- Real-time webcam-based hand tracking.
+- Finger landmark detection using MediaPipe.
+- Gesture-based desktop cursor control.
+- Left-click and right-click interactions.
+- Gesture-based scrolling and zooming.
+- Undo gesture support.
+- Live camera preview.
+- Start, Pause, Resume, and Stop controls.
+- Gesture status and last recognized action display.
+- Smooth camera preview fade-out when stopped.
+- Local webcam processing.
+
+## Implemented Gestures
+
+| Gesture | Desktop Action |
+|---|---|
+| Index finger extended, other fingers closed | Cursor movement |
+| Open palm followed by index finger bend | Left click |
+| Pinky gesture | Right click |
+| Thumb movement to the right | Zoom in |
+| Index and middle fingers extended, swipe left | Zoom out |
+| Swipe gesture | Scroll |
+| Thumbs down | Undo |
+
+Gesture detection uses hand landmarks, movement tracking, temporal detection, and confirmation frames where applicable.
+
+## Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Python | Core application logic |
+| OpenCV | Webcam capture and image processing |
+| MediaPipe | Hand landmark detection |
+| PyAutoGUI | Desktop interaction |
+| PySide6 | Desktop graphical interface |
+| PyInstaller | Standalone application packaging |
+
+## Application Architecture
+
+```text
+AirTouch/
+│
+├── src/
+│   ├── main.py
+│   │
+│   ├── vision/
+│   │   └── hand_tracker.py
+│   │
+│   ├── gestures/
+│   │   ├── swipe_detector.py
+│   │   ├── zoom_detector.py
+│   │   ├── pinky_detector.py
+│   │   └── thumbs_down_detector.py
+│   │
+│   ├── interaction/
+│   │   ├── action_mapper.py
+│   │   └── feedback.py
+│   │
+│   ├── logging/
+│   │   └── event_logger.py
+│   │
+│   └── gui/
+│       ├── main_window.py
+│       └── camera_worker.py
+│
+├── requirements.txt
+├── requirements-ui.txt
+├── project_description.md
+├── README.md
+└── .gitignore
+```
+
+### Processing Pipeline
+
+```text
+Webcam Input
+     |
+     v
+OpenCV Frame Capture
+     |
+     v
+MediaPipe Hand Tracking
+     |
+     v
+Hand Landmark Extraction
+     |
+     v
+Gesture Detection
+     |
+     v
+Action Mapping
+     |
+     v
+Desktop Interaction
+```
+
+The camera-processing loop runs separately from the graphical interface using a worker thread, keeping the application responsive during gesture recognition.
+
+## Quick Start
+
+### Prerequisites
+
+- Windows 10 or later for the current desktop application workflow.
+- Python 3.11 or 3.12 recommended.
+- A working webcam.
+
+```
+
+### Run AirTouch
+
+From the project root:
+
 ```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-macOS/Linux:
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m src.main
 ```
 
-The app entry point is a scaffold until implemented. Intended command: `python -m src.main`.
+The AirTouch desktop application will open and allow you to control your computer using hand gestures.
 
-## Roles
-- **Nidhi:** hand tracking, integration, `src/main.py`, repository setup and root config.
-- **Person 1:** action mapping, gestures.
-- **Person 2:** gesture recognition, detection.
-- **Person 3:** HCI study protocol and research documentation/ questionnaire.
-- **Person 4:** event logging, analysis and evaluation outputs.
+## Application Controls
 
+| Control | Function |
+|---|---|
+| Start AirTouch | Starts webcam capture and gesture recognition |
+| Pause | Temporarily pauses gesture processing |
+| Resume | Resumes gesture processing |
+| Stop | Stops camera processing and displays the stopped screen |
 
-## Module contracts
-- Tracker: frame in → structured landmarks/metadata or no hand.
-- Recognizer: landmarks/finger states in → standardized label or `UNKNOWN`.
-- Pinch detector: hand data in → pinch state/transition.
-- Swipe detector: recent positions over time → swipe direction or no event.
-- Action mapper: gesture event in → action and feedback.
-- Event logger: structured record in → saved row.
+The interface displays the live camera feed, current processing status, and last recognized action.
 
-Suggested labels: `POINT`, `PINCH`, `SWIPE_LEFT`, `SWIPE_RIGHT`, `OPEN_HAND`, `FIST`, `UNKNOWN`.
+## Project Documentation
 
-## Development rules
-1. Keep `main` runnable; use feature branches and pull requests.
-2. One primary owner per module; coordinate before editing another person's file.
-3. Never commit `.venv`, local logs, secrets or identifiable participant data.
-4. Use synthetic records to test analysis before real data exists.
-5. Label pilot data as pilot data; don't present planned features/results as completed.
-6. Confirm course requirements before participant testing.
+See [project_description.md](project_description.md) for detailed installation, packaging, and distribution instructions.
 
-## Evaluation plan
-The proposal plans a within-subject comparison of Mouse Only, Gesture without Calibration, and Gesture with Calibration, with at least 12 participants. Measures include recognition accuracy, false-positive rate, latency, task completion time, errors/attempts, confusion matrix, SUS, ease, workload, comfort, satisfaction, preference and qualitative feedback.
+## Privacy
+
+AirTouch processes webcam input locally on the user's computer. Camera frames are used for real-time hand tracking and gesture recognition.
+
+Any additional data collection for research or evaluation purposes are documented separately.
+
+## Limitations
+
+- Requires a functioning webcam.
+- Recognition performance can vary with lighting, camera quality, and hand visibility.
+- Hand occlusion and positioning may affect gesture recognition.
+- The current desktop application workflow targets Windows.
+- Desktop actions may behave differently depending on the operating system and application in focus.
+
+## License
+
+This project was developed as part of an academic Human-Computer Interaction course project. Add an appropriate open-source license before accepting external contributions or redistributing the project.
