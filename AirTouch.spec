@@ -14,7 +14,7 @@ import re
 
 from PyInstaller.utils.hooks import collect_all
 
-datas = []
+datas = [('assets/icons/airtouch.png', 'assets/icons')]
 binaries = []
 hiddenimports = []
 for package in ('mediapipe', 'cv2', 'matplotlib'):
@@ -107,6 +107,7 @@ exe = EXE(
     # false positives, so it stays off.
     upx=False,
     console=False,
+    icon='assets/icons/airtouch.ico',
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

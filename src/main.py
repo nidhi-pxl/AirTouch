@@ -3,6 +3,7 @@
 
 import math
 import sys
+from pathlib import Path
 
 
 # --------------------------------------------------
@@ -148,13 +149,21 @@ def main():
     # This avoids the circular import with camera_worker.py.
 
     from src.gui.main_window import MainWindow
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
     app.setApplicationName("AirTouch")
     app.setStyle("Fusion")
 
+    # PyInstaller extracts bundled assets under _MEIPASS; in development,
+    # resolve the same asset from the project root.
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    app_icon = QIcon(str(bundle_root / "assets" / "icons" / "airtouch.png"))
+    app.setWindowIcon(app_icon)
+
     window = MainWindow()
+    window.setWindowIcon(app_icon)
     window.show()
 
     return app.exec()
