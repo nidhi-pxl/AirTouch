@@ -6,8 +6,9 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     QEasingCurve,
     QTimer,
+    QUrl,
 )
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -19,87 +20,20 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
     QGraphicsOpacityEffect,
+    QDialog,
+    QStyle,
 )
 
 from src.gui.camera_worker import CameraWorker
+from src.gui.help_dialog import HelpDialog
+from src.gui.settings_dialog import SettingsDialog
+from src.gui.style import STYLE
+from src.settings import UserSettings
 
 
-STYLE = """
-QMainWindow, QWidget {
-    background: #11121A;
-    color: #F2F2F7;
-    font-family: 'Segoe UI';
-}
-
-QLabel {
-    background: transparent;
-    border: none;
-}
-
-QFrame#Panel {
-    background: #1B1D29;
-    border: 1px solid #2B2D3D;
-    border-radius: 14px;
-}
-
-QLabel#Brand {
-    font-size: 25px;
-    font-weight: 700;
-    color: #FFFFFF;
-}
-
-QLabel#Muted {
-    color: #9294A8;
-    font-size: 12px;
-}
-
-QLabel#Section {
-    color: #AFA9FF;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1px;
-}
-
-QLabel#Value {
-    color: #F6F5FF;
-    font-size: 16px;
-    font-weight: 600;
-}
-
-QPushButton {
-    background: #6558D3;
-    color: white;
-    border: 0;
-    border-radius: 9px;
-    padding: 11px 18px;
-    font-weight: 600;
-}
-
-QPushButton:hover {
-    background: #776BE5;
-}
-
-QPushButton:disabled {
-    background: #343548;
-    color: #85869A;
-}
-
-QPushButton#Secondary {
-    background: #292B3A;
-    border: 1px solid #3A3C50;
-}
-
-QPushButton#Danger {
-    background: #8D3F55;
-}
-
-QLabel#Camera {
-    background: #090A10;
-    border: 1px solid #303246;
-    border-radius: 12px;
-    color: #85869A;
-}
-"""
+DEMO_VIDEO_URL = (
+    "https://drive.google.com/file/d/1L972ndypdpU8BxBm31tjMN1YOlr2CGag/view"
+)
 
 
 class MainWindow(QMainWindow):
@@ -108,13 +42,21 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("AirTouch")
-        self.setMinimumSize(760, 560)
-        self.resize(900, 650)
+        self.setMinimumSize(760, 620)
+        self.resize(900, 680)
         self.setStyleSheet(STYLE)
 
         self.worker = None
+        self._badge_state = None
+        self.user_settings = UserSettings.load()
+
         self._build_ui()
         self._build_stop_overlay()
+        self._update_profile_label()
+
+        # Show the gesture guide the first time AirTouch is opened.
+        if not self.user_settings.seen_help:
+            QTimer.singleShot(400, self._first_run_help)
 
     def _panel(self):
         frame = QFrame()
@@ -213,6 +155,11 @@ class MainWindow(QMainWindow):
         self.last_action.setWordWrap(True)
         gl.addWidget(self.last_action)
 
+        self.profile_label = QLabel()
+        self.profile_label.setObjectName("Muted")
+        self.profile_label.setWordWrap(True)
+        gl.addWidget(self.profile_label)
+
         side.addWidget(gesture_panel)
 
         # Controls panel
@@ -239,6 +186,30 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_camera)
         cl.addWidget(self.stop_btn)
+
+        self.settings_btn = QPushButton("Settings")
+        self.settings_btn.setObjectName("Secondary")
+        self.settings_btn.clicked.connect(self.open_settings)
+        cl.addWidget(self.settings_btn)
+
+        help_row = QHBoxLayout()
+        help_row.setSpacing(8)
+
+        self.help_btn = QPushButton("How to use")
+        self.help_btn.setObjectName("Small")
+        self.help_btn.clicked.connect(self.open_help)
+        help_row.addWidget(self.help_btn)
+
+        self.demo_btn = QPushButton("Demo video")
+        self.demo_btn.setObjectName("Small")
+        self.demo_btn.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
+        )
+        self.demo_btn.setToolTip("Watch the AirTouch demo (opens in your browser)")
+        self.demo_btn.clicked.connect(self.open_demo_video)
+        help_row.addWidget(self.demo_btn)
+
+        cl.addLayout(help_row)
 
         side.addWidget(controls)
         side.addStretch()
@@ -332,12 +303,13 @@ class MainWindow(QMainWindow):
         self.camera_view.setPixmap(QPixmap())
         self.camera_view.setText("Starting camera...")
 
-        self.worker = CameraWorker()
+        self.worker = CameraWorker(settings=self.user_settings.effective())
 
         self.worker.frame_ready.connect(self.update_preview)
         self.worker.status_changed.connect(self.update_status)
         self.worker.gesture_detected.connect(self.update_gesture)
         self.worker.error_occurred.connect(self.show_error)
+        self.worker.finished.connect(self._on_worker_finished)
 
         self.worker.start()
 
@@ -360,20 +332,20 @@ class MainWindow(QMainWindow):
             self.pause_btn.setText("Pause")
 
     def stop_camera(self):
+        # Don't wait for the camera to shut down here: that froze the window
+        # for several seconds. Start is re-enabled once the worker finishes.
         if self.worker and self.worker.isRunning():
-            self.worker.stop()
+            self.worker.request_stop()
+            self.start_btn.setEnabled(False)
+        else:
+            self.start_btn.setEnabled(True)
 
-        self.start_btn.setEnabled(True)
         self.pause_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
 
         self.pause_btn.setText("Pause")
 
-        self.status_badge.setText("●  STOPPED")
-        self.status_badge.setStyleSheet(
-            "color:#A1A2B3; background:#242634; "
-            "padding:9px 13px; border-radius:10px; font-weight:700;"
-        )
+        self._set_badge("Stopped")
 
         self.current_status.setText("Stopped")
 
@@ -388,9 +360,16 @@ class MainWindow(QMainWindow):
     # Camera and gesture updates
     # ---------------------------------------------------------
 
+    def _on_worker_finished(self):
+        # Only react if this is still the current worker.
+        if self.worker is not None and self.sender() is self.worker:
+            self.start_btn.setEnabled(True)
+
     def update_preview(self, image):
+        worker = self.worker
+
         # Ignore late frames after Stop has been clicked
-        if not self.worker or not self.worker.isRunning():
+        if not worker or not worker.isRunning() or not worker._running:
             return
 
         pixmap = QPixmap.fromImage(image)
@@ -403,26 +382,33 @@ class MainWindow(QMainWindow):
             )
         )
 
+        # Let the worker send the next frame.
+        worker.frame_shown()
+
     def update_status(self, state, detail):
+        self._set_badge(state)
+        self.current_status.setText(detail)
+
+    def _set_badge(self, state):
+        # Restyling a widget is slow in Qt, so only do it when the state
+        # actually changes.
+        if state == self._badge_state:
+            return
+        self._badge_state = state
+
         colors = {
             "Active": ("#7DE0AE", "#19382D"),
             "Searching": ("#F0C674", "#3A3020"),
             "Paused": ("#F0C674", "#3A3020"),
             "Stopped": ("#A1A2B3", "#242634"),
         }
-
-        fg, bg = colors.get(
-            state,
-            ("#A1A2B3", "#242634"),
-        )
+        fg, bg = colors.get(state, ("#A1A2B3", "#242634"))
 
         self.status_badge.setText(f"●  {state.upper()}")
         self.status_badge.setStyleSheet(
             f"color:{fg}; background:{bg}; "
             "padding:9px 13px; border-radius:10px; font-weight:700;"
         )
-
-        self.current_status.setText(detail)
 
     def update_gesture(self, event):
         self.last_action.setText(
@@ -434,6 +420,74 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "AirTouch", message)
         self.stop_camera()
 
-    def closeEvent(self, event):
+    # ---------------------------------------------------------
+    # Settings, help and demo video
+    # ---------------------------------------------------------
+
+    def _update_profile_label(self):
+        self.profile_label.setText(
+            f"Settings: {self.user_settings.profile_name()}"
+        )
+
+    def _prepare_calibration(self):
+        """Calibration needs the camera, so stop AirTouch first if running."""
+        if not (self.worker and self.worker.isRunning()):
+            return True
+
+        answer = QMessageBox.question(
+            self,
+            "Calibrate",
+            "AirTouch needs to stop while you calibrate. Stop it now?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+
         self.stop_camera()
+        # Calibration opens the camera itself, so wait until it's released.
+        self.worker.stop()
+        return True
+
+    def open_settings(self):
+        dialog = SettingsDialog(
+            self.user_settings,
+            prepare_calibration=self._prepare_calibration,
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.result_settings:
+            return
+
+        self.user_settings = dialog.result_settings
+        if not self.user_settings.save():
+            QMessageBox.warning(
+                self,
+                "AirTouch",
+                "Your settings are in use but could not be saved to disk, "
+                "so they will reset when AirTouch closes.",
+            )
+        self._update_profile_label()
+
+        # Apply straight away if AirTouch is running.
+        if self.worker and self.worker.isRunning():
+            self.worker.apply_settings(self.user_settings.effective())
+
+    def open_help(self):
+        HelpDialog(self).exec()
+
+    def _first_run_help(self):
+        self.open_help()
+        self.user_settings.seen_help = True
+        self.user_settings.save()
+
+    def open_demo_video(self):
+        if not QDesktopServices.openUrl(QUrl(DEMO_VIDEO_URL)):
+            QMessageBox.information(
+                self,
+                "Demo video",
+                "Couldn't open your web browser automatically.\n\n"
+                "Open this link to watch the demo:\n" + DEMO_VIDEO_URL,
+            )
+
+    def closeEvent(self, event):
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()   # wait so the camera is released cleanly
         event.accept()

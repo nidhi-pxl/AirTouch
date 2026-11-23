@@ -1,16 +1,28 @@
-
 """Detect vertical scrolling using finger configurations and hand movement."""
+
+import math
 
 
 class SwipeDetector:
-    """Detect vertical scroll gestures using hand position and finger states."""
+    """Detect vertical scroll gestures using hand position and finger states.
+
+    SCROLL_DOWN: all five fingers open, hand moves UP.
+    SCROLL_UP  : thumb closed, four fingers open, hand moves DOWN.
+
+    Movement is measured as a fraction of hand size (wrist -> middle MCP),
+    like the zoom detector, so the same hand movement scrolls whether you sit
+    close to the camera or far from it, and at any camera resolution.
+    """
 
     def __init__(
         self,
-        movement_threshold: int = 50,
-        rearm_threshold: int = 10,
+        movement_threshold: float = 0.55,
+        rearm_threshold: float = 0.12,
         max_invalid_frames: int = 3,
     ):
+        # Both thresholds are multiples of hand size. 0.55 matches the old
+        # 50-pixel threshold for a hand at a typical distance from a 640x480
+        # webcam.
         self.movement_threshold = movement_threshold
         self.rearm_threshold = rearm_threshold
         self.max_invalid_frames = max_invalid_frames
@@ -26,6 +38,13 @@ class SwipeDetector:
         self.armed = True
         self.invalid_frames = 0
         self.active_gesture = None
+
+    @staticmethod
+    def _hand_scale(lm_list) -> float:
+        return math.hypot(
+            lm_list[9][0] - lm_list[0][0],
+            lm_list[9][1] - lm_list[0][1],
+        )
 
     def update(self, hand_info: dict, finger_states: list[int]) -> str | None:
         """Return SCROLL_UP, SCROLL_DOWN, or None."""
@@ -56,6 +75,12 @@ class SwipeDetector:
             self.reset()
             return None
 
+        hand_scale = self._hand_scale(lm_list)
+
+        if hand_scale <= 0:
+            self.reset()
+            return None
+
         self.invalid_frames = 0
 
         # Palm center: midpoint between wrist and middle MCP.
@@ -72,7 +97,8 @@ class SwipeDetector:
             self.anchor_y = current_y
             return None
 
-        displacement = current_y - self.anchor_y
+        # Displacement in hand sizes (negative = hand moved up).
+        displacement = (current_y - self.anchor_y) / hand_scale
 
         # Rearm after returning close to the starting position.
         if not self.armed:

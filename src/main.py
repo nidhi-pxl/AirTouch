@@ -86,8 +86,15 @@ def get_index_bend_angle(hand):
         return None
 
 
-def detect_left_click_gesture(hand, finger_states):
-    """Detect the left-click pose."""
+def detect_left_click_gesture(hand, finger_states, bent_angle=None):
+    """Detect the left-click pose.
+
+    bent_angle: index bend angle (degrees) below which the finger counts as
+    bent. Defaults to LEFT_CLICK_BENT_ANGLE; calibration may lower or raise it.
+    """
+
+    if bent_angle is None:
+        bent_angle = LEFT_CLICK_BENT_ANGLE
 
     if hand is None or len(finger_states) != 5:
         return False, None
@@ -104,7 +111,7 @@ def detect_left_click_gesture(hand, finger_states):
     index_is_bent = (
         finger_states[1] == 0
         and angle is not None
-        and angle < LEFT_CLICK_BENT_ANGLE
+        and angle < bent_angle
     )
 
     return required_fingers_open and index_is_bent, angle

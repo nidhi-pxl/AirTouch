@@ -24,9 +24,13 @@ class ZoomDetector:
         self,
         movement_threshold: float = 0.6,
         rearm_threshold: float = 0.15,
-        max_invalid_frames: int = 3,
+        max_invalid_frames: int = 8,
         thumb_down_ratio: float = 0.25,
     ):
+        # max_invalid_frames: finger readings often flicker for a few frames
+        # while the hand is sliding (motion blur). With the old value of 3
+        # (~0.1 s) the starting point was thrown away mid-slide, so zoom
+        # rarely triggered. 8 frames is ~0.25 s at 30 FPS.
         self.movement_threshold = movement_threshold
         self.rearm_threshold = rearm_threshold
         self.max_invalid_frames = max_invalid_frames
@@ -37,12 +41,16 @@ class ZoomDetector:
         self.invalid_frames = 0
         self.active_gesture = None
 
+        # Short text for the camera preview, e.g. "ZOOM IN pose: 40% ->".
+        self.feedback = None
+
     def reset(self):
         """Reset movement tracking."""
         self.anchor_x = None
         self.armed = True
         self.invalid_frames = 0
         self.active_gesture = None
+        self.feedback = None
 
     @staticmethod
     def _matches(template, finger_states) -> bool:
@@ -125,7 +133,19 @@ class ZoomDetector:
             if abs(displacement) <= self.rearm_threshold:
                 self.anchor_x = current_x
                 self.armed = True
+            else:
+                self.feedback = (
+                    f"{gesture.replace('_', ' ')}: move back to start to repeat"
+                )
             return None
+
+        # Progress towards the trigger distance, for the preview overlay.
+        direction = 1 if gesture == "ZOOM_IN" else -1
+        progress = max(0.0, direction * displacement / self.movement_threshold)
+        arrow = "->" if gesture == "ZOOM_IN" else "<-"
+        self.feedback = (
+            f"{gesture.replace('_', ' ')} pose: {min(progress, 1.0):.0%} {arrow}"
+        )
 
         # Thumb slides right -> zoom in.
         if gesture == "ZOOM_IN" and displacement >= self.movement_threshold:

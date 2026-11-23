@@ -181,17 +181,12 @@ pip install pyinstaller
 Run the following command from the project root:
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --windowed --onedir --name AirTouch --collect-all PySide6 --collect-all cv2 --collect-all mediapipe src/main.py
+python -m PyInstaller --noconfirm --clean AirTouch.spec
 ```
 
-### Build Options
+`AirTouch.spec` holds all the build options: a windowed app (no console), packaged as a folder, with MediaPipe, OpenCV and matplotlib data collected. It also leaves out about 120 MB of library files AirTouch never uses: OpenCV's video-file codec and face data, Qt Quick/QML/PDF, the software-OpenGL fallback, translations, MediaPipe's non-hand models, Tk, and test files.
 
-- `--noconfirm`: Overwrites previous build output without prompting.
-- `--clean`: Cleans temporary build files.
-- `--windowed`: Runs the application without opening a console window.
-- `--onedir`: Packages the application and its dependencies into a directory.
-- `--name AirTouch`: Sets the application name.
-- `--collect-all`: Includes package data and supporting files for the specified libraries.
+Don't add `--collect-all PySide6` or build from the command line without the spec. That brings the unused files back.
 
 ## 3. Locate the Executable
 
@@ -228,7 +223,7 @@ Users can access AirTouch by:
 
 Users do not need to install Python or the project's dependencies separately.
 
-Windows may display a SmartScreen warning for an unsigned executable.
+Windows may display a SmartScreen warning ("Windows protected your PC") for an unsigned executable. Click **More info → Run anyway**.
 
 ## Future Distribution Improvements
 
@@ -271,7 +266,6 @@ Windows may display a SmartScreen warning for an unsigned executable.
 
 # Future Improvements
 
-- User-specific gesture calibration.
 - Additional customizable gestures.
 - Improved recognition accuracy and robustness.
 - Configurable gesture-to-action mappings.

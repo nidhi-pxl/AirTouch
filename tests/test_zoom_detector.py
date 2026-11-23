@@ -82,3 +82,32 @@ def test_missing_hand_resets():
 def test_invalid_landmarks_do_not_trigger():
     d = ZoomDetector()
     assert d.update({"lm_list": []}, IN_POSE) is None
+
+
+def test_brief_flicker_during_slide_does_not_restart():
+    """Finger readings flicker for a few frames while the hand moves."""
+    d = ZoomDetector()
+    d.update(make_hand(thumb_x=100), IN_POSE)
+    d.update(make_hand(thumb_x=120), IN_POSE)
+    for x in (130, 140, 145, 150, 155):        # 5 blurry frames
+        assert d.update(make_hand(thumb_x=x), FIST) is None
+    assert d.update(make_hand(thumb_x=165), IN_POSE) == "ZOOM_IN"
+
+
+def test_long_wrong_pose_still_resets():
+    d = ZoomDetector()
+    d.update(make_hand(thumb_x=100), IN_POSE)
+    for _ in range(8):
+        d.update(make_hand(thumb_x=100), FIST)
+    assert d.active_gesture is None
+    # Needs a fresh start position after the reset.
+    assert d.update(make_hand(thumb_x=170), IN_POSE) is None
+
+
+def test_feedback_shows_progress():
+    d = ZoomDetector()
+    d.update(make_hand(thumb_x=100), IN_POSE)
+    d.update(make_hand(thumb_x=130), IN_POSE)
+    assert d.feedback == "ZOOM IN pose: 50% ->"
+    d.update(None, None)
+    assert d.feedback is None
