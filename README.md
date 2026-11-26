@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="assets/branding/github-banner.png" alt="AirTouch - Webcam-based Hand Gesture Interaction" width="100%">
+
+</div>
+
 # AirTouch
 
 ### Fine-Grained Finger Gesture Interaction Using Commodity Camera Sensing
